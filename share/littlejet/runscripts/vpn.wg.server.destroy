@@ -1,0 +1,136 @@
+#!/bin/sh
+#
+# Copyright (c) 2024, Jesús Daniel Colmenares Oviedo <DtxdF@disroot.org>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice, this
+#   list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its
+#   contributors may be used to endorse or promote products derived from
+#   this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+DEPLOY_NAME="vpn.wg.server.destroy"
+
+main()
+{
+    local lib_subr
+    lib_subr="${LITTLEJET_LIB_SUBR}"
+
+    if [ -z "${lib_subr}" ]; then
+        echo "LITTLEJET_LIB_SUBR: environment variable hasn't been defined." >&2
+        exit 78 # EX_CONFIG
+    fi
+
+    if [ ! -f "${lib_subr}" ]; then
+        echo "${lib_subr}: library cannot be found." >&2
+        exit 66 # EX_NOINPUT
+    fi
+    
+    . "${lib_subr}"
+
+    load_config
+
+    setname "${DEPLOY_NAME}"
+
+    local _o
+    local jail_name="littlejet-server-wg"
+
+    while getopts ":j:" _o; do
+        case "${_o}" in
+            j)
+                jail_name="${OPTARG}"
+                ;;
+            *)
+                usage
+                ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    local node
+    node="$1"
+
+    if [ -z "${node}" ]; then
+        usage
+    fi
+
+    if ! checknodename "${node}"; then
+        err "${node}: invalid node name."
+        exit ${EX_DATAERR}
+    fi
+
+    local errlevel
+
+    local output
+    output=`testnode "${node}" 2>&1`
+        
+    errlevel=$?
+
+    if [ ${errlevel} -ne 0 ]; then
+        err "Could not destroy VPN server on node '${node}': ${output}"
+        exit ${EX_NOPERM}
+    fi
+
+    output=`remote_exc "${node}" "NO" "NO" appjail status -q -- "\"${jail_name}\"" 2>&1`
+
+    errlevel=$?
+
+    if [ ${errlevel} -eq 0 -o ${errlevel} -eq 1 ]; then
+        warn "Destroying VPN server on node '${node}'"
+
+        remote_exc "${node}" "NO" "YES" \
+            appjail stop -- "\"${jail_name}\""
+
+        errlevel=$?
+
+        if [ ${errlevel} -ne 0 ]; then
+            err "Error stopping VPN jail '${jail_name}' on node '${node}'"
+            exit ${errlevel}
+        fi
+
+        remote_exc "${node}" "NO" "YES" \
+            appjail jail destroy -Rf -- "\"${jail_name}\""
+
+        errlevel=$?
+
+        if [ ${errlevel} -ne 0 ]; then
+            err "Error destroying VPN jail '${jail_name}' on node '${node}'"
+            exit ${errlevel}
+        fi
+    elif [ ${errlevel} -eq ${EX_NOINPUT} ]; then
+        err "Cannot find VPN jail '${jail_name}' on node '${node}'"
+        exit ${EX_NOINPUT}
+    else
+        err "Could not check status of jail '${jail_name}' on node '${jail_name}': ${output}"
+        exit ${errlevel}
+    fi
+
+    exit ${EX_OK}
+}
+
+usage()
+{
+	err "usage: ${DEPLOY_NAME} [-j <jail-name>] <node>"
+	exit ${EX_USAGE}
+}
+
+main "$@"

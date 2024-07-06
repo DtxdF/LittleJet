@@ -1,0 +1,802 @@
+#!/bin/sh
+#
+# Copyright (c) 2024, Jesús Daniel Colmenares Oviedo <DtxdF@disroot.org>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice, this
+#   list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its
+#   contributors may be used to endorse or promote products derived from
+#   this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+DEPLOY_NAME="vpn.wg.load-balancer.pen"
+
+main()
+{
+    local lib_subr
+    lib_subr="${LITTLEJET_LIB_SUBR}"
+
+    if [ -z "${lib_subr}" ]; then
+        echo "LITTLEJET_LIB_SUBR: environment variable hasn't been defined." >&2
+        exit 78 # EX_CONFIG
+    fi
+
+    if [ ! -f "${lib_subr}" ]; then
+        echo "${lib_subr}: library cannot be found." >&2
+        exit 66 # EX_NOINPUT
+    fi
+    
+    . "${lib_subr}"
+
+    load_config
+
+    setname "${DEPLOY_NAME}"
+
+    checkdependency jq
+
+    local project
+    project="${LITTLEJET_PROJECT}"
+
+    if [ -z "${project}" ]; then
+        err "LITTLEJET_PROJECT: environment variable hasn't been defined."
+        exit ${EX_CONFIG}
+    fi
+
+    atexit_init
+    atexit_add ". \"${lib_subr}\""
+    atexit_add "setname \"${DEPLOY_NAME}\""
+    atexit_add "load_config"
+
+    local _o
+    local opt_expose=false
+    local opt_use_http_header=false
+    local opt_use_hash=false
+    local opt_use_roundrobin=false
+    local opt_use_stubborn=false
+    local opt_use_weight=false
+    local opt_use_prio=false
+    local blacklist=6
+    local max_clients=2048
+    local jail="littlejet-server-wg"
+    local multi_accept=256
+    local node=
+    local port=1234
+    local suffix="-lb"
+    local tracked_seconds=6
+    local timeout=10
+    local backlog=500
+    local virtual_network=
+    local max_simultaneous_connections=500
+
+    while getopts ":eHhrsWPb:c:J:m:n:p:S:T:t:q:v:x:" _o; do
+        case "${_o}" in
+            e)
+                opt_expose=true
+                ;;
+            H)
+                opt_use_http_header=true
+                ;;
+            h)
+                opt_use_hash=true
+                ;;
+            r)
+                opt_use_roundrobin=true
+                ;;
+            s)
+                opt_use_stubborn=true
+                ;;
+            W)
+                opt_use_weight=true
+                ;;
+            P)
+                opt_use_prio=true
+                ;;
+            b)
+                blacklist="${OPTARG}"
+                ;;
+            c)
+                max_clients="${OPTARG}"
+                ;;
+            J)
+                jail="${OPTARG}"
+                ;;
+            m)
+                multi_accept="${OPTARG}"
+                ;;
+            n)
+                node="${OPTARG}"
+                ;;
+            p)
+                port="${OPTARG}"
+                ;;
+            S)
+                suffix="${OPTARG}"
+                ;;
+            T)
+                tracked_seconds="${OPTARG}"
+                ;;
+            t)
+                timeout="${OPTARG}"
+                ;;
+            q)
+                backlog="${OPTARG}"
+                ;;
+            v)
+                virtual_network="${OPTARG}"
+                ;;
+            x)
+                max_simultaneous_connections="${OPTARG}"
+                ;;
+            *)
+                usage
+                ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    if [ $# -lt 2 ]; then
+        usage
+    fi
+
+    local vpn
+    vpn="$1"
+
+    if ! checknodename "${vpn}"; then
+        err "${vpn}: invalid node name."
+        exit ${EX_NOINPUT}
+    fi
+
+    local target
+    target="$2"
+
+    if ! checknodename "${target}"; then
+        err "${target}: invalid node name."
+        exit ${EX_NOINPUT}
+    fi
+
+    shift 2
+
+    local errlevel
+
+    local output
+    output=`testnode "${vpn}" 2>&1`
+        
+    errlevel=$?
+
+    if [ ${errlevel} -ne 0 ]; then
+        err "Could not deploy VPN load-balancer due to an error on node '${vpn}': ${output}"
+        exit ${EX_SOFTWARE}
+    fi
+
+    output=`remote_exc "${vpn}" "NO" "NO" appjail status -q -- "\"${jail}\"" 2>&1`
+
+    errlevel=$?
+
+    if [ ${errlevel} -eq 0 ]; then
+        # pass
+    elif [ ${errlevel} -eq 1 ]; then
+        warn "VPN server on jail '${jail}', node '${vpn}' hasn't been started"
+
+        remote_exc "${vpn}" "YES" "NO" appjail start -- "\"${jail}\""
+    elif [ ${errlevel} -eq ${EX_NOINPUT} ]; then
+        err "VPN server doesn't exist, use 'vpn.wg.server' to deploy it."
+        exit ${EX_NOINPUT}
+    else
+        err "Could not check status of jail '${jail}' on node '${vpn}': ${output}"
+        exit ${EX_SOFTWARE}
+    fi
+
+    output=`remote_exc "${vpn}" "NO" "NO" appjail cmd jexec "\"${jail}\"" test -f /.done 2>&1`
+
+    errlevel=$?
+
+    if [ ${errlevel} -eq 0 ]; then
+        # pass
+    elif [ ${errlevel} -eq 1 ]; then
+        err "The VPN server on jail '${jail}' on node '${vpn}' does not appear to be healthy, make sure you deploy it correctly."
+        exit ${EX_SOFTWARE}
+    else
+        err "Failed to check the status of jail '${jail}' on node '${vpn}': ${output}"
+        exit ${EX_SOFTWARE}
+    fi
+
+    local network_address
+    network_address=`remote_exc "${vpn}" "NO" "NO" appjail cmd jexec "\"${jail}\"" /scripts/run-with-lock.sh get-network-addr 2>&1`
+
+    if [ $? -ne 0 ]; then
+        err "Failed to get network address on node '${vpn}': ${network_address}"
+        exit ${EX_SOFTWARE}
+    fi
+
+    local allow_exclude=true
+    local nodes
+
+    if [ -n "${node}" ]; then
+        if ! checknodename "${node}"; then
+            err "${node}: invalid node name."
+            exit ${EX_NOINPUT}
+        fi
+
+        if ! checknode "${node}"; then
+            err "${node}: node cannot be found."
+            exit ${EX_NOINPUT}
+        fi
+        
+        nodes="${node}"
+        allow_exclude=false
+    else
+        nodes=`jet get-nodes "${project}"` || exit $?
+
+        if [ -z "${nodes}" ]; then
+            exit ${EX_CANTCREAT}
+        fi
+    fi
+
+    local conf
+    conf=`tempdir` || exit $?
+
+    atexit_add "removedir \"${conf}\""
+
+    for node in ${nodes}; do
+        if ${allow_exclude}; then
+            local exclude
+            exclude=`jet get-label "${project}" "${node}" vpn.wg.load-balancer.pen.exclude 2> /dev/null`
+
+            if [ -n "${exclude}" ]; then
+                debug "Node '${node}' was excluded"
+                continue
+            fi
+        fi
+
+        local penctl_extra_args=
+
+        local node_max
+        node_max=`jet get-label "${project}" "${node}" vpn.wg.load-balancer.pen.max 2> /dev/null`
+
+        if [ -n "${node_max}" ]; then
+            penctl_extra_args="max ${node_max}"
+        fi
+
+        local node_hard
+        node_hard=`jet get-label "${project}" "${node}" vpn.wg.load-balancer.pen.hard 2> /dev/null`
+
+        if [ -n "${node_hard}" ]; then
+            penctl_extra_args="hard ${node_hard}"
+        fi
+
+        local node_weight
+        node_weight=`jet get-label "${project}" "${node}" vpn.wg.load-balancer.pen.weight 2> /dev/null`
+
+        if [ -n "${node_weight}" ]; then
+            penctl_extra_args="weight ${node_weight}"
+        fi
+
+        local node_prio
+        node_prio=`jet get-label "${project}" "${node}" vpn.wg.load-balancer.pen.prio 2> /dev/null`
+
+        if [ -n "${node_prio}" ]; then
+            penctl_extra_args="prio ${node_prio}"
+        fi
+
+        local errlevel
+
+        local output
+        output=`run_director "${project}" "${node}" "NO" "NO" check 2>&1`
+
+        errlevel=$?
+
+        if [ ${errlevel} -eq 0 ]; then
+            # pass
+        elif [ ${errlevel} -eq ${EX_NOINPUT} ]; then
+            warn "${project}: project not found"
+            continue
+        else
+            warn "Project '${project}' has an error: ${output}"
+            continue
+        fi
+
+        local project_info
+        project_info=`run_director "${project}" "${node}" "YES" "NO" describe 2>&1`
+
+        if [ $? -ne 0 ]; then
+            warn "Error getting information about project '${project}' on node '${node}': ${project_info}"
+            continue
+        fi
+
+        local state
+        state=`echo -e "${project_info}" | safe_exc jq -r .state 2>&1`
+
+        if [ $? -ne 0 ]; then
+            warn "Error parsing information about project '${project}' on node '${node}': ${state}"
+            continue
+        fi
+
+        debug "Project state is '${state}'"
+
+        if ! [ "${state}" = "DONE" -o "${state}" = "DESTROYING" ]; then
+            warn "State (${state}) is different than expected"
+            continue
+        fi
+
+        local services_status
+        services_status=`echo -e "${project_info}" | safe_exc jq -r '.services.[].status' 2>&1`
+
+        if [ $? -ne 0 ]; then
+            warn "Error parsing information about project '${project}' on node '${node}': ${services_status}"
+            continue
+        fi
+
+        local service_index=0
+
+        local service_status
+        for service_status in ${services_status}; do
+            local service_name
+            service_name=`echo -e "${project_info}" | safe_exc jq -r ".services.[${service_index}].name" 2>&1`
+
+            if [ $? -ne 0 ]; then
+                warn "Error parsing information about project '${project}' on node '${node}': ${service_name}"
+                service_index=$((service_index+1))
+                continue
+            fi
+
+            if ! [ ${service_status} -eq 0 -o ${service_status} -eq 1 ]; then
+                warn "Service '${service_name}' has a different status (${service_status}) than expected"
+                service_index=$((service_index+1))
+                continue
+            fi
+
+            local peerid
+            peerid="peer://${node}/${project}/${service_name}"
+
+            remote_exc "${vpn}" "NO" "NO" \
+                appjail cmd jexec "\"${jail}\"" /scripts/run-with-lock.sh check "${peerid}"
+
+            errlevel=$?
+
+            if [ ${errlevel} -eq ${EX_OK} ]; then
+                # pass
+            elif [ ${errlevel} -eq ${EX_NOINPUT} ]; then
+                warn "Peer '${peerid}' cannot be found"
+                service_index=$((service_index+1))
+                continue
+            else
+                warn "Error checking for existence of peer '${peerid}'"
+                service_index=$((service_index+1))
+                continue
+            fi
+
+            local peer_address
+            peer_address=`remote_exc "${vpn}" "NO" "NO" appjail cmd jexec "\"${jail}\"" /scripts/run-with-lock.sh get-addr "${peerid}" 2>&1`
+
+            if [ $? -ne 0 ]; then
+                warn "Error getting information about peer '${peerid}': ${peer_address}"
+                service_index=$((service_index+1))
+                continue
+            fi
+
+            local peerid_lb
+            peerid_lb="peer://${target}/${project}/${service_name}/load-balancer"
+
+            remote_exc "${vpn}" "NO" "NO" \
+                appjail cmd jexec "\"${jail}\"" /scripts/run-with-lock.sh check "${peerid_lb}"
+
+            errlevel=$?
+
+            if [ ${errlevel} -eq ${EX_OK} ]; then
+                # pass
+            elif [ ${errlevel} -eq ${EX_NOINPUT} ]; then
+                remote_exc "${vpn}" "NO" "NO" \
+                    appjail cmd jexec "\"${jail}\"" /scripts/run-with-lock.sh add "${peerid_lb}"
+
+                if [ $? -ne 0 ]; then
+                    warn "Error creating peer '${peerid_lb}'"
+                    service_index=$((service_index+1))
+                    continue
+                fi
+            else
+                warn "Error checking for existence of peer '${peerid_lb}'"
+                service_index=$((service_index+1))
+                continue
+            fi
+
+            local service_jail
+            service_jail=`echo -e "${project_info}" | safe_exc jq -r ".services.[${service_index}].jail" 2>&1`
+
+            if [ $? -ne 0 ]; then
+                warn "Error parsing information about project '${project}' on node '${node}': ${service_jail}"
+                service_index=$((service_index+1))
+                continue
+            fi
+
+            local labels
+            labels="vpn.wg.client.from.port vpn.wg.client.proto"
+            labels="${labels} vpn.wg.load-balancer.pen.include.me"
+
+            local label_from_port=
+            local label_proto="tcp"
+            local label_include_me=
+
+            local label
+            for label in ${labels}; do
+                local value
+                value=`remote_exc "${node}" "NO" "NO" appjail label get -I -l "${label}" -- "${service_jail}" value 2>&1`
+
+                errlevel=$?
+
+                if [ ${errlevel} -eq 0 ]; then
+                    # pass
+                elif [ ${errlevel} -eq ${EX_NOINPUT} ]; then
+                    continue
+                else
+                    warn "Error getting label '${label}' from service '${service_name}': ${value}"
+                    continue
+                fi
+
+                case "${label}" in
+                    vpn.wg.client.from.port)
+                        setvar "label_from_port" "${value}"
+                        ;;
+                    vpn.wg.client.proto)
+                        setvar "label_proto" "${value}"
+                        ;;
+                    vpn.wg.load-balancer.pen.include.me)
+                        setvar "label_include_me" "${value}"
+                        ;;
+                esac
+            done
+
+            if [ -z "${label_include_me}" ]; then
+                debug "Service '${service_name}' doesn't have the label 'vpn.wg.load-balancer.pen.include.me'"
+                service_index=$((service_index+1))
+                continue
+            fi
+
+            if [ -z "${label_from_port}" ]; then
+                warn "Service '${service_name}' wants to be included in the list but has not defined an external port"
+                service_index=$((service_index+1))
+                continue
+            fi
+
+            if ! checknumber "${label_from_port}" || ! checkport "${label_from_port}"; then
+                want "Service '${service_name}' has an invalid external port: ${label_from_port}"
+                service_index=$((service_index+1))
+                continue
+            fi
+
+            case "${label_proto}" in
+                tcp|udp)
+                    ;;
+                *)
+                    warn "Service '${service_name}' has an invalid protocol: ${label_proto}"
+                    service_index=$((service_index+1))
+                    continue
+                    ;;
+            esac
+
+            local lb_jail
+            lb_jail="${project}-${service_name}${suffix}"
+            lb_jail=`printf "%s" "${lb_jail}" | sed -Ee 's/\./_0X2E_/g'`
+
+            local ident
+            ident="${project}-${service_name}"
+
+            if [ $? -ne 0 ]; then
+                service_index=$((service_index+1))
+                continue
+            fi
+
+            local identdir
+            identdir="${conf}/${ident}"
+
+            if [ ! -d "${identdir}" ]; then
+                if ! mkdir -p -- "${identdir}"; then
+                    service_index=$((service_index+1))
+                    continue
+                fi
+            fi
+
+            local addr4penctl
+            addr4penctl="address ${peer_address} port ${label_from_port}"
+
+            if [ -n "${penctl_extra_args}" ]; then
+                addr4penctl="${addr4penctl} ${penctl_extra_args}"
+            fi
+
+            if ! printf "%s\n" "${addr4penctl}" >> "${identdir}/services"; then
+                if [ ! -f "${identdir}/skip" ]; then
+                    touch -- "${identdir}/skip"
+                fi
+                service_index=$((service_index+1))
+                continue
+            fi
+
+            if [ ! -f "${identdir}/proto" ]; then
+                if ! printf "%s" "${label_proto}" > "${identdir}/proto"; then
+                    if [ ! -f "${identdir}/skip" ]; then
+                        touch -- "${identdir}/skip"
+                    fi
+                    service_index=$((service_index+1))
+                    continue
+                fi
+            fi
+
+            if [ ! -f "${identdir}/service_name" ]; then
+                if ! printf "%s" "${service_name}" > "${identdir}/service_name"; then
+                    if [ ! -f "${identdir}/skip" ]; then
+                        touch -- "${identdir}/skip"
+                    fi
+                    service_index=$((service_index+1))
+                    continue
+                fi
+            fi
+
+            if [ ! -f "${identdir}/jail" ]; then
+                if ! printf "%s" "${lb_jail}" > "${identdir}/jail"; then
+                    if [ ! -f "${identdir}/skip" ]; then
+                        touch -- "${identdir}/skip"
+                    fi
+                    service_index=$((service_index+1))
+                    continue
+                fi
+            fi
+
+            service_index=$((service_index+1))
+        done
+    done
+
+    local ident
+    for ident in `ls -1 -- "${conf}"`; do
+        local identdir
+        identdir="${conf}/${ident}"
+
+        if [ -f "${identdir}/skip" ]; then
+            continue
+        fi
+
+        if [ ! -f "${identdir}/services" ]; then
+            continue
+        fi
+
+        if [ ! -f "${identdir}/proto" ]; then
+            continue
+        fi
+
+        local proto
+        proto=`head -1 -- "${identdir}/proto"` || continue
+
+        if [ -z "${proto}" ]; then
+            continue
+        fi
+
+        if [ ! -f "${identdir}/jail" ]; then
+            continue
+        fi
+
+        local lb_jail
+        lb_jail=`head -1 -- "${identdir}/jail"` || continue
+
+        if [ -z "${lb_jail}" ]; then
+            continue
+        fi
+
+        if [ ! -f "${identdir}/service_name" ]; then
+            continue
+        fi
+
+        local service_name
+        service_name=`head -1 -- "${identdir}/service_name"` || continue
+
+        if [ -z "${service_name}" ]; then
+            continue
+        fi
+
+        output=`remote_exc "${target}" "NO" "NO" appjail status -q -- "\"${lb_jail}\"" 2>&1`
+
+        errlevel=$?
+
+        local deploy_lb=false
+
+        if [ ${errlevel} -eq 0 ]; then
+            # pass
+        elif [ ${errlevel} -eq 1 ]; then
+            warn "Load-balancer on jail '${lb_jail}', node '${target}', hasn't been started"
+
+            remote_exc "${target}" "NO" "NO" appjail start -- "\"${lb_jail}\""
+
+            if [ $? -ne 0 ]; then
+                warn "Error starting jail '${lb_jail}'"
+                continue
+            fi
+
+            output=`remote_exc "${target}" "NO" "NO" appjail cmd jexec "\"${lb_jail}\"" test -f /.done 2>&1`
+
+            errlevel=$?
+
+            if [ ${errlevel} -eq 0 ]; then
+                # pass
+            elif [ ${errlevel} -eq 1 ]; then
+                warn "Load-balancer on jail '${lb_jail}' on node '${taret}' does not appear to be healthy, re-deploying"
+
+                deploy_lb=true
+            else
+                warn "Failed to check the status of jail '${lb_jail}' on node '${target}': ${output}"
+                continue
+            fi
+        elif [ ${errlevel} -eq ${EX_NOINPUT} ]; then
+            info "Creating load-balancer on jail '${lb_jail}', node '${target}'"
+
+            deploy_lb=true
+        else
+            warn "Could not check status of jail '${lb_jail}' on node '${target}': ${output}"
+            continue
+        fi
+
+        local peerid
+        peerid="peer://${target}/${project}/${service_name}/load-balancer"
+
+        if ${deploy_lb}; then
+            local local_wg_conf
+            local_wg_conf=`tempfile`
+
+            if [ $? -ne 0 ]; then
+                warn "Error creating a temporary file locally: ${local_wg_conf}"
+                continue
+            fi
+
+            atexit_add "removefile \"${local_wg_conf}\""
+
+            local wg_conf
+            wg_conf=`remote_exc "${target}" "NO" "NO" mktemp -t littlejet-vpn.wg.client 2>&1`
+
+            if [ $? -ne 0 ]; then
+                warn "Error while remotely creating a temporary file: ${wg_conf}"
+                continue
+            fi
+
+            remote_exc "${vpn}" "NO" "NO" \
+                appjail cmd jexec "\"${jail}\"" /scripts/run-with-lock.sh show "${peerid}" > "${local_wg_conf}"
+
+            if [ $? -ne 0 ]; then
+                warn "Error writing locally the WireGuard configuration file of peer '${peerid}'"
+                remote_exc "${target}" "NO" "NO" rm -f -- "\"${wg_conf}\"" 2> /dev/null
+                continue
+            fi
+            
+            (mirror "${local_wg_conf}" "${target}:${wg_conf}")
+
+            if [ $? -ne 0 ]; then
+                warn "Error uploading the WireGuard configuration file to peer '${peerid}'"
+                remote_exc "${target}" "NO" "NO" rm -f -- "\"${wg_conf}\"" 2> /dev/null
+                continue
+            fi
+
+            removefile "${local_wg_conf}"
+
+            set --
+            
+            if ${opt_expose}; then
+                set -- -o "\"expose=${port} proto:${proto}\""
+            fi
+            
+            local services
+            services=`cat -- "${identdir}/services" | tr '\n' ';' | sed -Ee 's/;$//'`
+
+            set -- "$@" --
+            set -- "$@" --wg_pen_services "\"${services}\""
+            set -- "$@" --wg_pen_port "${port}"
+            set -- "$@" --wg_pen_blacklist "${blacklist}"
+            set -- "$@" --wg_pen_tracked_seconds "${tracked_seconds}"
+            set -- "$@" --wg_pen_max_clients "${max_clients}"
+            set -- "$@" --wg_pen_backlog "${backlog}"
+            set -- "$@" --wg_pen_timeout "${timeout}"
+            set -- "$@" --wg_pen_max_simultaneous_connections "${max_simultaneous_connections}"
+            set -- "$@" --wg_pen_multi_accept "${multi_accept}"
+            set -- "$@" --wg_conf "\"${wg_conf}\""
+
+            if ${opt_expose}; then
+                port=$((port+1))
+
+                if ! checkport "${port}"; then
+                    warn "${port}: invalid port."
+                    remote_exc "${target}" "NO" "NO" rm -f -- "\"${wg_conf}\"" 2> /dev/null
+                    continue
+                fi
+            fi
+
+            if [ "${proto}" = "udp" ]; then
+                set -- "$@" --wg_pen_use_udp 1
+            fi
+
+            if ${opt_use_http_header}; then
+                set -- "$@" --wg_pen_use_http_header 1
+            fi
+
+            if ${opt_use_hash}; then
+                set -- "$@" --wg_pen_use_hash 1
+            fi
+
+            if ${opt_use_roundrobin}; then
+                set -- "$@" --wg_pen_use_roundrobin 1
+            fi
+
+            if ${opt_use_stubborn}; then
+                set -- "$@" --wg_pen_use_stubborn 1
+            fi
+
+            if ${opt_use_weight}; then
+                set -- "$@" --wg_pen_use_weight 1
+            fi
+
+            if ${opt_use_prio}; then
+                set -- "$@" --wg_pen_use_prio 1
+            fi
+
+            if [ -n "${virtual_network}" ]; then
+                set -- "$@" --wg_virtualnet "${virtual_network}"
+            fi
+
+            remote_exc "${target}" "NO" "NO" \
+                appjail makejail \
+                    -j "\"${lb_jail}\"" \
+                    -f "\"gh+DtxdF/LittleJet-wg-makejail --file load-balancer.makejail\"" \
+                    "$@"
+
+            if [ $? -ne 0 ]; then
+                warn "Error deploying load-balancer on node '${target}'"
+                remote_exc "${target}" "NO" "NO" rm -f -- "\"${wg_conf}\"" 2> /dev/null
+                continue
+            fi
+
+            remote_exc "${target}" "NO" "NO" rm -f -- "\"${wg_conf}\"" 2> /dev/null
+        else
+            info "Updating load-balancer information"
+
+            set --
+
+            local service
+            while IFS= read -r service; do
+                set -- "$@" "\"${service}\""
+            done < "${identdir}/services"
+
+            remote_exc "${target}" "NO" "NO" \
+                appjail cmd jexec "\"${lb_jail}\"" /scripts/update-servers.sh "$@"
+
+            if [ $? -ne 0 ]; then
+                warn "Error updating load-balancer information"
+            fi
+        fi
+    done
+
+    removedir "${conf}"
+
+    exit ${EX_OK}
+}
+
+usage()
+{
+	err "usage: ${DEPLOY_NAME} [-eHhrsWP] [-b <seconds>] [-c <number>] [-J <jail>] [-m <number>]"
+    err "               [-n <node>] [-p <port>] [-S <suffix>] [-T <seconds>] [-t <seconds>]"
+    err "               [-q <backlog>] [-v <virtual-network>] [-x <number>] <vpn> <node>"
+	exit ${EX_USAGE}
+}
+
+main "$@"

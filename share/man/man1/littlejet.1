@@ -1,0 +1,825 @@
+.\"Copyright (c) 2024, Jesús Daniel Colmenares Oviedo <DtxdF@disroot.org>
+.\"All rights reserved.
+.\"
+.\"Redistribution and use in source and binary forms, with or without
+.\"modification, are permitted provided that the following conditions are met:
+.\"
+.\"* Redistributions of source code must retain the above copyright notice, this
+.\"  list of conditions and the following disclaimer.
+.\"
+.\"* Redistributions in binary form must reproduce the above copyright notice,
+.\"  this list of conditions and the following disclaimer in the documentation
+.\"  and/or other materials provided with the distribution.
+.\"
+.\"* Neither the name of the copyright holder nor the names of its
+.\"  contributors may be used to endorse or promote products derived from
+.\"  this software without specific prior written permission.
+.\"
+.\"THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+.\"AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\"IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+.\"DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+.\"FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\"DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+.\"SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+.\"CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+.\"OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+.\"OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+.Dd July 1, 2024
+.Dt LITTLEJET 1
+.Os
+.Sh NAME
+.Nm littlejet
+.Nd Create, deploy, manage and scale FreeBSD jails anywhere
+.Sh SYNOPSIS
+.Nm
+.Cm usage
+.Nm
+.Cm version
+.Pp
+.Nm
+.Cm add-label
+.Ar project
+.Ar node
+.Ar label Ns = Ns Ar value No "..."
+.Nm
+.Cm del-label
+.Ar project
+.Ar node
+.Ar label
+.Nm
+.Cm del-labels
+.Ar project
+.Ar node
+.Nm
+.Cm get-label
+.Ar project
+.Ar node
+.Ar label
+.Nm
+.Cm get-labels
+.Ar project
+.Ar node
+.Pp
+.Nm
+.Cm add-node
+.Op Fl T
+.Ar project
+.Ar node
+.Nm
+.Cm copy-nodes
+.Op Fl O
+.Ar src-project
+.Ar dst-project
+.Op Ar node
+.Nm
+.Cm del-node
+.Ar project
+.Ar node
+.Nm
+.Cm del-nodes
+.Ar project
+.Pp
+.Nm
+.Cm copy
+.Op Fl fN
+.Ar project
+.Ar new-project
+.Nm
+.Cm create
+.Op Fl f
+.Ar project
+.Op Ar director-file
+.Nm
+.Cm destroy
+.Ar project
+.Nm
+.Cm get-nodes
+.Ar project
+.Nm
+.Cm get-projects
+.Nm
+.Cm rename
+.Ar project
+.Ar new-project
+.Nm
+.Cm show
+.Op Ar project
+.Pp
+.Nm
+.Cm run-appjail
+.Op Fl CHPs
+.Op Fl p Ar project
+.Op Fl n Ar node
+.Ar appjail-command
+.Op Ar args No "..."
+.Nm
+.Cm run-cmd
+.Op Fl CHPs
+.Op Fl p Ar project
+.Op Fl n Ar node
+.Ar command
+.Op Ar args No "..."
+.Nm
+.Cm run-director
+.Op Fl CHPs
+.Op Fl p Ar project
+.Op Fl n Ar node
+.Ar director-command
+.Op Ar args No "..."
+.Pp
+.Nm
+.Cm run-script
+.Op Fl p Ar project
+.Ar run-script
+.Op Ar args No "..."
+.Nm
+.Cm schedule
+.Ar lock-file
+.Ar args No "..."
+.Pp
+.Nm
+.Cm set-director
+.Ar project
+.Ar director-file
+.Nm
+.Cm set-env
+.Ar project
+.Ar env-file
+.Pp
+.Sh DESCRIPTION
+LittleJet is an open source, easy-to-use orchestrator for managing, deploying,
+scaling and interconnecting FreeBSD jails anywhere in the world.
+.Pp
+The options are as follows:
+.Pp
+.Bl -tag -width xxx -compact
+.It Cm usage
+Display usage message and exit.
+.Pp
+.It Cm version
+Display version information about LittleJet.
+.Pp
+.It Cm add-label Ar project Ar node Ar label Ns = Ns Ar value No "..."
+Add a new label to an existing project node.
+.Pp
+.It Cm del-label Ar project Ar node Ar label
+Delete an existing label from the given project node.
+.Pp
+.It Cm del-labels Ar project Ar node
+Delete all labels from the given project node.
+.Pp
+.It Cm get-label Ar project Ar node Ar label
+Get the label value from the project node.
+.Pp
+.It Cm get-labels Ar project Ar node
+Get all labels from the project node.
+.Pp
+.It Cm add-node Oo Fl T Oc Ar project Ar node
+Add a new
+.Ar node
+to
+.Ar project Ns "."
+By default, this subcommand connects to the node and runs the
+.Xr true 1
+command to check if everything is OK unless the
+.Fl T
+flag is set.
+.Pp
+.It Cm copy-nodes Oo Fl O Oc Ar src-project Ar dst-project Oo Ar node Oc
+Copy nodes from
+.Ar src-project
+to
+.Ar dst-project Ns "."
+.Pp
+If the
+.Fl O
+flag is set, nodes in
+.Ar dst-project
+are deleted first before nodes in
+.Ar src-project
+are copied.
+.Pp
+If a
+.Ar node
+is specified, it is only copied instead of all nodes.
+.Pp
+.It Cm del-node Ar project Ar node
+Remove
+.Ar node
+from
+.Ar project Ns "."
+This also destroys the project remotely.
+.Pp
+.It Cm del-nodes Ar project
+Like
+.Cm del-node
+but for each node of
+.Ar project Ns "."
+.Pp
+.It Cm copy Oo Fl fN Oc Ar project Ar new-project
+Copy
+.Ar project
+as
+.Ar new-project Ns "."
+.Pp
+By default, nodes are copied unless the
+.Fl N
+flag is set.
+.Pp
+If the
+.Fl f
+flag is set and
+.Ar new-project
+exists, it will be overwritten.
+.Pp
+.It Cm create Oo Fl f Oc Ar project Oo Ar director-file Oc
+Create a new project.
+.Pp
+This subcommand first determines the directory of the Director file and makes a 
+complete copy. That new copy is the new project directory. By default, the Director
+file is 
+.Do Pa appjail-director.yml Dc Ns ,
+assuming one exists in the current working directory.
+.Pp
+An error is returned if the project to be created exists unless
+.Fl f
+is set.
+.Pp
+.It Cm destroy Ar project
+Destroys the nodes of the given project and the project itself. It will destroy
+the project remotely on each node, which means that all its jails will be
+destroyed.
+.Pp
+Note that this subcommand will attempt to destroy jails, but if the current jail
+fails to be stopped or destroyed, this subcommand continues without problems and
+ignores those jails.
+.Pp
+.It Cm get-nodes Ar project
+Get a list of the current nodes for the given project.
+.Pp
+.It Cm get-projects
+Get a list of current projects.
+.Pp
+.It Cm rename Ar project Ar new-project
+Rename a project.
+.Pp
+Technically, this subcommand first copies
+.Ar project
+as
+.Ar new-project
+and then copies the nodes of
+.Ar project Ns "."
+Once these operations are completed,
+.Ar project
+is removed.
+.Pp
+.It Cm show Oo Ar project Oc
+Displays information about
+.Ar project
+or all projects if none are specified.
+.Pp
+.It Cm run-appjail Oo Fl CHPs Oc Oo Fl p Ar project Oc Oo Fl n Ar node Oc Ar appjail-command Oo Ar args No "..." Oc
+.It Cm run-cmd Oo Fl CHPs Oc Oo Fl p Ar project Oc Oo Fl n Ar node Oc Ar command Oo Ar args No "..." Oc
+.It Cm run-director Oo Fl CHPs Oc Oo Fl p Ar project Oc Oo Fl n Ar node Oc Ar director-command Oo Ar args No "..." Oc
+Run an
+.Xr appjail 1
+subcommand with
+.Cm run-appjail Ns ,
+a Director subcommand with
+.Cm run-director Ns ,
+or simply a shell command on the remote system with
+.Cm run-cmd Ns "."
+.Pp
+If
+.Fl p
+and
+.Fl n
+are not set, the given command is executed on each node in each project.
+.Pp
+For each execution of the
+.Cm run-director
+subcommand, it sets the
+.Ev DIRECTOR_PROJECT
+and
+.Ev LITTLEJET_NODE
+environment variables.
+.Pp
+.Bl -tag -width xx
+.It Fl C
+Since the
+.Xr ssh 1 Ns "'s"
+.Fl t
+flag is set, the output will be altered, so
+.Xr sansi 1
+is used to remove those control characters.
+.Pp
+Note that this command must put stdout/stderr into a buffer before displaying it.
+.It Fl H
+By default, a header is displayed to see where the next host should execute the
+given command, unless this flag is set.
+.It Fl P
+The given command is executed linearly on each node, but with this flag it is executed
+in parallel on each node. This flag is meaningless when the
+.Fl p
+and
+.Fl n
+parameters are set since the given command is executed as if this flag were not set.
+.It Fl s
+Exits without success when the given command fails. This only makes sense when the
+.Fl P
+flag is not set.
+.Pp
+Note that this command must put stdout/stderr into a buffer before displaying it.
+.It Fl p Ar project
+Run the given command in the given project. If the
+.Fl n
+parameter is not set, the command is run on each node in this project.
+.It Fl n Ar node
+Run the given command on the given node. If the
+.Fl p
+parameter is not set, the command is executed in each project but using this node.
+.El
+.Pp
+.It Cm run-script Oo Fl p Ar project Oc Ar run-script Oo Ar args No "..." Oc
+Run the given RunScript on all projects or on the specific project if
+.Fl p
+is set.
+.Pp
+.It Cm schedule Ar lock-file Ar args No "..."
+If there is another process locking
+.Ar lock-file Ns ,
+this subcommand will exit immediately and successfully. This subcommand is very
+useful when run with a tool like
+.Xr cron 8 Ns "."
+.Pp
+.It Cm set-director Ar project Ar director-file
+Set a new Director file by overwriting an existing one in the project directory.
+.Pp
+.It Cm set-env Ar project Ar env-file
+Copy new environment file by overwriting an existing one in the project directory.
+.El
+.Sh RUNSCRIPTS
+.Bl -tag -width xxx
+.It Cm deploy.all
+Deploy the project to all nodes.
+.It Cm deploy.each
+For each run, deploy to any of the nodes.
+.It Cm deploy.once
+Deploy a project to a node if it is not already deployed to any of them.
+.It Cm deploy.random
+Deploy a project to a randomly chosen node.
+.It Cm deploy.scale Oo Fl m Ar min Oc Oo Fl M Ar max Oc Oo Fl r Ar rctl-rules Oc Oo Fl S Ar number Oc Oo Fl t Ar scale-type Oc Oo Fl T Ar number Oc
+Scale the project.
+.Pp
+Note that this RunScript can and will destroy the project regardless of the node.
+.Pp
+.Bl -tag -width xx
+.It Fl m Ar min
+Minimum of replicas. By default is
+.Sy 1 Ns "."
+.It Fl M Ar max
+Maximum replicas that the project can replicate when auto-scaling. By default
+is the same than the total of nodes in the given project.
+.It Fl r Ar rctl-rules
+Space-separated list of
+.Xr rctl 8
+rules. Each item is a key and value pair separated by
+.Sy = Ns "."
+The key is an
+.Xr rctl 8
+resource. You can use the suffixes described in
+.Xr humanize_number 3
+for resources that work with bytes and any resources with numbers without suffixes.
+Regardless of whether the resource works with bytes or any other unit, the value must
+be greater than
+.Sy 0 Ns "."
+.Pp
+Note that the value is interpreted based on the scale type set by the
+.Fl t
+parameter.
+.Pp
+Each node must pre-configure
+.Sy kern.racct.enable=1
+in its
+.Xr loader.conf 5
+before using any rctl(8) rules.
+.It Fl S Ar number
+Stabilization window.
+.Pp
+After there are no more targets
+.Pq projects or jails
+that fail the
+.Xr rctl 8
+rules, this RunScript will destroy the rest of the nodes up to the minimum defined
+by the
+.Fl m
+parameter. This parameter will sleep the current process at the given number if
+it is greater than
+.Sy 0
+before re-performing the entire operation of this RunScript.
+.Pp
+The default is
+.Sy 30 Ns "."
+.It Fl t Ar scale-type
+How the value defined by the
+.Xr rctl 8
+rule in the
+.Fl r
+parameter should be interpreted to check whether a target
+.Pq project or jail
+passes the test or not.
+.Bl -tag -width xx
+.It Cm any-jail
+Fails if any of the jails have a metric greater than or equal to the limit defined
+by the
+.Fl r
+parameter.
+.Pp
+This is the default.
+.It Cm any-project
+Fails if the metric total for all jails in the same project is greater
+than or equal to the limit defined by the
+.Fl r
+parameter.
+.It Cm average
+Calculates the average of the metric for all jails in the same project and fails
+if it is greater than or equal to the limit defined by the
+.Fl r
+parameter.
+.It Cm percent-jail Ns = Ns Ar percent
+Calculates the percentage of the limit defined by the
+.Fl r
+parameter and fails if it is greater than or equal to the current metric. For example, if you define a rule as
+.Dq vmemoryuse=512m
+and a percentage of
+.Sy 60 Ns ,
+the value will be
+.Sy 307
+.Po rounded Pc Ns ,
+so this test fails if the current metric is greater than or equal to
+.Sy 307 Ns "."
+.It Cm percent-project Ns = Ns Ar percent
+Like
+.Cm percent-jail Ns ,
+but first get the metric total for all jails in the same project.
+.El
+.It Fl T Ar number
+After deploying to a new node due to a failed test of an
+.Xr rctl 8
+rule against another target
+.Po project or jail Pc Ns ,
+sleep up to the number defined by this parameter.
+.Pp
+The default is
+.Sy 15 Ns "."
+.El
+.It Cm deploy.single Ar node
+Deploy a project to the given node.
+.It Cm vpn.wg.client Oo Fl j Ar jail Oc Oo Fl n Ar node Oc Oo Fl s Ar suffix Oc Oo Fl v Ar virtual-network Oc Ar vpn
+Create a
+.Do Connector Dc Ns ,
+a jail with a VPN client connected to the VPN server that can forward packets between
+a service in another jail and the VPN.
+.Pp
+A jail that wants to be exposed to the VPN must configure
+.Sy vpn.wg.client.include.me
+as one of its labels. Also required is
+.Sy vpn.wg.client.from.port Ns ,
+which is the port the load balancer will use to send packets. Other labels are
+.Sy vpn.wg.client.target.port
+which by default, when not defined, is the same as
+.Sy vpn.wg.client.from.port Ns ,
+and finally,
+.Sy vpn.wg.client.proto Ns ,
+the service protocol, which by default is
+.Sy tcp Ns "."
+.Pp
+You must first deploy the VPN server using the RunScript
+.Sy vpn.wg.server Ns .
+After deployment,
+.Ar vpn
+should point to that node. This RunScript also does not include the project even
+if you pass an existing one, but it is recommended to pass at least one non-existent
+project as
+.Sy ignore
+at least so as not to execute this RunScript several times up to the total number
+of projects that the manager has.
+.Pp
+This RunScript is designed to be executed more than once. If you run again after
+a previous successful deployment, this RunScript will check if the jail that has
+the service exists and if not, it will destroy the connector and remove the peer
+from the VPN. It will also check if the jail that has the service has changed its
+IPv4 address of the Virtual Network and if so it will update the IPv4 that the
+connector uses to send packets to that jail to finally reload the
+.Xr pf 4
+rules.
+.Pp
+Nodes can be excluded using the
+.Sy vpn.wg.client.exclude
+label. See
+.Cm add-label
+for more details. Note that this label is ignored when
+.Fl n
+is set.
+.Pp
+.Bl -tag -width xx
+.It Fl j Ar jail
+.Ar vpn Ns "'s"
+jail.
+.Pp
+The default is
+.Sy littlejet-server-wg Ns "."
+.It Fl n Ar node
+Work only on this node.
+.It Fl s Ar suffix
+The
+.Dq Connector
+is a jail with a VPN client and needs a name. The jail name will be
+.Sy <project>-<service><suffix> Ns ,
+where
+.Sy <suffix>
+defaults to
+.Sy -wg Ns "."
+.It Fl v Ar virtual-network
+AppJail virtual network created by
+.Xr appjail-network 1 Ns "."
+By default, this is undefined, so
+.Xr appjail-quick 1
+will use the
+.Sy AUTO_*
+network parameters to create one if it doesn't exist.
+.El
+.It Cm vpn.wg.client.destroy Oo Fl j Ar jail Oc Oo Fl n Ar node Oc Oo Fl s Ar suffix Oc Ar vpn
+Destroy all already deployed connectors. This also requires the VPN server to be
+deployed for this RunScript to remove the association between the connectors and
+the peers.
+.Pp
+The
+.Sy vpn.wg.client.exclude
+node label can be used to ignore the given node, but note that this is ignored when
+.Fl n
+is set.
+.It Cm vpn.wg.server Oo Fl E Oc Oo Fl j Ar jail-name Oc Oo Fl p Ar port Oc Oo Fl n Ar network Oc Oo Fl m Ar mtu Oc Oo Fl P Ar seconds Oc Oo Fl v Ar virtual-network Oc Fl e Ar endpoint Ar node
+.Pp
+Create a VPN server on
+.Ar node Ns "."
+.Pp
+See also
+.Lk https://github.com/DtxdF/LittleJet-wg-makejail "VPN server, VPN client and Load balancer"
+.Pp
+.Bl -tag -width xx
+.It Fl E
+By default, the port will be exposed unless this flag is set.
+.It Fl j Ar jail-name
+Jail name where the VPN server will be.
+.Pp
+The default is
+.Sy littlejet-server-wg Ns "."
+.It Fl p Ar port
+VPN server port. By default is
+.Sy 51820 Ns "."
+.It Fl n Ar network
+VPN address.
+.It Fl m Ar mtu
+See
+.Sy MTU
+in
+.Xr wg-quick 8 Ns "."
+.It Fl P Ar seconds
+See
+.Sy PersistentKeepalive
+in
+.Xr wg 8 Ns "."
+.It Fl v Ar virtual-network
+AppJail virtual network created by
+.Xr appjail-network 1 Ns "."
+By default, this is undefined, so
+.Xr appjail-quick 1
+will use the
+.Sy AUTO_*
+network parameters to create one if it doesn't exist.
+.It Fl e Ar endpoint
+IP address of the VPN node.
+.Pp
+Note that deploying the VPN server, connectors, and/or load balancer on the same
+node will not work if you use the external IP address of the VPN node.
+.Pp
+See
+.Lk https://www.openbsd.org/faq/pf/rdr.html#reflect "Redirection and Reflection"
+.El
+.It Cm vpn.wg.server.destroy Oo Fl j Ar jail-name Oc Ar node
+Destroy the VPN jail
+.Ar jail-name Ns ,
+which by default is
+.Sy littlejet-server-wg Ns ,
+on node
+.Ar node Ns "."
+.Pp
+If you want to destroy all the load balancers, connectors and the VPN server, you
+must run the corresponding RunScripts in that order.
+.It Cm vpn.wg.load-balancer.pen Oo Fl eHhrsWP Oc Oo Fl b Ar seconds Oc Oo Fl c Ar number Oc Oo Fl J Ar jail Oc Oo Fl m Ar number Oc Oo Fl n Ar node Oc Oo Fl p Ar port Oc Oo Fl S Ar suffix Oc Oo Fl T Ar seconds Oc Oo Fl t Ar seconds Oc Oo Fl q Ar backlog Oc Oo Fl v Ar virtual-network Oc Oo Fl x Ar number Oc Ar vpn Ar node
+Create a jail with a load balancer that also provides failover and a VPN client
+that connects to the VPN server
+.Ar vpn
+for each service that wants to load balance on
+.Ar node Ns "."
+.Pp
+Jails that want to load balance must have the
+.Sy vpn.wg.load-balancer.pen.include.me
+label and at least
+.Sy vpn.wg.client.from.port
+configured.
+.Sy vpn.wg.client.client.proto
+will be used if set.
+.Pp
+There are other node labels that are more useful depending on the load balancing
+algorithm you choose.
+.Sy vpn.wg.load-balancer.pen.max Ns ,
+.Sy vpn.wg.load-balancer.pen.hard Ns ,
+.Sy vpn.wg.load-balancer.pen.weight
+and
+.Sy vpn.wg.load-balancer.pen.prio Ns "."
+See
+.Sy server
+in
+.Xr penctl 1
+for more details.
+.Pp
+Nodes can be excluded using the
+.Sy vpn.wg.load-balancer.pen.exclude
+label. See
+.Cm add-label
+for more details. Note that this label is ignored when
+.Fl n
+is set.
+.Pp
+Remember that
+.Xr pen 1
+is an L4 load balancer, so if all nodes are dead or the service is not provided
+on any node, the client will see empty replies or just errors.
+.Pp
+This RunScript is designed to be executed more than once. If run after a successful
+deployment, it will update the current list of servers to include more, the same,
+or fewer nodes than the previous deployment, but note that this list is updated
+dynamically and if you restart
+.Xr pen 1
+or the jail that once you have it, it will start with the server list you started
+with the first time. Since the process will be repeated, the list will be up-to-date.
+.Pp
+.Bl -tag -width xx
+.It Fl e
+Expose the service provided by the load balancer.
+.Pp
+For each load balancer created and when the
+.Fl e
+flag is set, the port is incremented, so for example, if there are two services
+to load balance and the initial port is
+.Sy 1234 Ns ,
+then the first load balancer will use
+.Sy 1234
+and the second
+.Sy 1235 Ns "."
+.It Fl H
+See
+.Fl H
+in
+.Xr penctl 1 Ns "."
+.It Fl h
+See
+.Fl h
+in
+.Xr pen 1 Ns "."
+.It Fl r
+See
+.Fl r
+in
+.Xr pen 1 Ns "."
+.It Fl s
+See
+.Fl s
+in
+.Xr pen 1 Ns "."
+.It Fl W
+See
+.Fl W
+in
+.Xr pen 1 Ns "."
+.It Fl P
+See
+.Sy prio
+in
+.Xr penctl 1 Ns "."
+.It Fl b Ar seconds
+See
+.Fl b
+in
+.Xr pen 1 Ns "."
+.Pp
+The default is
+.Sy 6 Ns "."
+.It Fl c Ar number
+See
+.Fl c
+in
+.Xr pen 1 Ns "."
+.Pp
+The default is
+.Sy 2048 Ns "."
+.It Fl J Ar jail
+.Ar vpn Ns "'s"
+jail.
+.Pp
+The default is
+.Sy littlejet-server-wg Ns "."
+.It Fl m Ar number
+See
+.Fl m
+in
+.Xr pen 1 Ns "."
+.Pp
+The default is
+.Sy 256 Ns "."
+.It Fl n Ar node
+Work only on this node.
+.It Fl p Ar port
+Listening port.
+.Pp
+The default is
+.Sy 1234 Ns "."
+.It Fl S Ar suffix
+The load balancer is a jail that needs a name. The jail name will be
+.Sy <project>-<service><suffix> Ns ,
+where
+.Sy <suffix>
+defaults to
+.Sy -lb Ns "."
+.It Fl T Ar seconds
+See
+.Fl T
+in
+.Xr pen 1 Ns "."
+.Pp
+The default is
+.Sy 6 Ns "."
+.It Fl t Ar seconds
+See
+.Fl t
+in
+.Xr pen 1 Ns "."
+.Pp
+The default is
+.Sy 10 Ns "."
+.It Fl q Ar backlog
+See
+.Fl q
+in
+.Xr pen 1 Ns "."
+.Pp
+The default is
+.Sy 500 Ns "."
+.It Fl v Ar virtual-network
+AppJail virtual network created by
+.Xr appjail-network 1 Ns "."
+By default, this is undefined, so
+.Xr appjail-quick 1
+will use the
+.Sy AUTO_*
+network parameters to create one if it doesn't exist.
+.It Fl x Ar number
+See
+.Fl x
+in
+.Xr pen 1 Ns "."
+.Pp
+The default is
+.Sy 500 Ns "."
+.El
+.It Cm vpn.wg.load-balancer.pen.destroy Oo Fl J Ar jail Oc Oo Fl n Ar node Oc Oo Fl S Ar suffix Oc Ar vpn Ar node
+Destroy all already deployed load-balancers. This also requires the VPN server to
+be deployed for this RunScript to remove the association between the load-balancers
+and the peers.
+.Pp
+The
+.Sy vpn.wg.load-balancer.pen.exclude
+node label can be used to ignore the given node, but note that this is ignored when
+.Fl n
+is set.
+.El
+.Sh FILES
+.Bl -tag -width xxxx
+.It Pa ~/.config/littlejet/config.conf
+See
+.Xr littlejet.conf 5 Ns "."
+.It Pa %%PREFIX%%/share/littlejet/files/lib.subr
+Subroutines primarily used by RunScripts.
+.El
+.Sh EXIT STATUS
+.Ex -std
+.Sh SEE ALSO
+.Xr appjail 1
+.Xr sysexits 3
+.Xr littlejet.conf 5
+.Lk https://github.com/DtxdF/director "AppJail Director"
+.Sh AUTHORS
+.An Jesús Daniel Colmenares Oviedo Aq Mt DtxdF@disroot.org

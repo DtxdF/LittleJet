@@ -1,0 +1,90 @@
+#!/bin/sh
+#
+# Copyright (c) 2024, Jesús Daniel Colmenares Oviedo <DtxdF@disroot.org>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice, this
+#   list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its
+#   contributors may be used to endorse or promote products derived from
+#   this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+DEPLOY_NAME="deploy.once"
+
+main()
+{
+    local lib_subr
+    lib_subr="${LITTLEJET_LIB_SUBR}"
+
+    if [ -z "${lib_subr}" ]; then
+        echo "LITTLEJET_LIB_SUBR: environment variable hasn't been defined." >&2
+        exit 78 # EX_CONFIG
+    fi
+
+    if [ ! -f "${lib_subr}" ]; then
+        echo "${lib_subr}: library cannot be found." >&2
+        exit 66 # EX_NOINPUT
+    fi
+    
+    . "${lib_subr}"
+
+    load_config
+
+    setname "${DEPLOY_NAME}"
+
+    local project
+    project="${LITTLEJET_PROJECT}"
+
+    if [ -z "${project}" ]; then
+        err "LITTLEJET_PROJECT: environment variable hasn't been defined."
+        exit ${EX_CONFIG}
+    fi
+
+    local nodes
+    nodes=`jet get-nodes "${project}"` || exit $?
+
+    if [ -z "${nodes}" ]; then
+        exit ${EX_CANTCREAT}
+    fi
+
+    local deploy=true
+
+    local node
+    for node in ${nodes}; do
+        if run_director "${project}" "${node}" "NO" "NO" check; then
+            deploy=false
+
+            info "${project}: project already deployed."
+            break
+        fi
+    done
+
+    if ${deploy}; then
+        node=`printf "%s\n" "${nodes}" | sort -R | head -1`
+
+        deploy "${project}" "${node}"
+    fi
+
+    exit ${EX_OK}
+}
+
+main "$@"

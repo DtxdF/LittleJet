@@ -1,0 +1,193 @@
+#!/bin/sh
+#
+# Copyright (c) 2024, Jesús Daniel Colmenares Oviedo <DtxdF@disroot.org>
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice, this
+#   list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its
+#   contributors may be used to endorse or promote products derived from
+#   this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+DEPLOY_NAME="vpn.wg.server"
+
+main()
+{
+    local lib_subr
+    lib_subr="${LITTLEJET_LIB_SUBR}"
+
+    if [ -z "${lib_subr}" ]; then
+        echo "LITTLEJET_LIB_SUBR: environment variable hasn't been defined." >&2
+        exit 78 # EX_CONFIG
+    fi
+
+    if [ ! -f "${lib_subr}" ]; then
+        echo "${lib_subr}: library cannot be found." >&2
+        exit 66 # EX_NOINPUT
+    fi
+    
+    . "${lib_subr}"
+
+    load_config
+
+    setname "${DEPLOY_NAME}"
+
+    local _o
+    local opt_expose=true
+    local jail_name="littlejet-server-wg"
+    local port=51820
+    local network=
+    local mtu=
+    local persistentkeepalive=
+    local virtual_network=
+    local endpoint=
+
+    while getopts ":Ej:p:n:m:P:v:e:" _o; do
+        case "${_o}" in
+            E)
+                opt_expose=false
+                ;;
+            j)
+                jail_name="${OPTARG}"
+                ;;
+            p)
+                port="${OPTARG}"
+                ;;
+            n)
+                network="${OPTARG}"
+                ;;
+            m)
+                mtu="${OPTARG}"
+                ;;
+            P)
+                persistentkeepalive="${OPTARG}"
+                ;;
+            v)
+                virtual_network="${OPTARG}"
+                ;;
+            e)
+                endpoint="${OPTARG}"
+                ;;
+            *)
+                usage
+                ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    if [ -z "${endpoint}" ]; then
+        usage
+    fi
+
+    local node
+    node="$1"
+
+    if [ -z "${node}" ]; then
+        usage
+    fi
+
+    shift
+
+    set --
+
+    if ! checknumber "${port}"; then
+        err "${port}: port must be a number."
+        exit ${EX_DATAERR}
+    fi
+
+    if ! checkport "${port}"; then
+        err "${port}: invalid port."
+        exit ${EX_DATAERR}
+    fi
+
+    if ${opt_expose}; then
+        set -- -o "\"expose=${port} proto:udp\""
+    fi
+
+    set -- "$@" -V WG_PORT="${port}"
+
+    if [ -n "${mtu}" ]; then
+        if ! checknumber "${mtu}"; then
+            err "${mtu}: MTU must be a number."
+            exit ${EX_DATAERR}
+        fi
+
+        set -- "$@" -V WG_MTU="${mtu}"
+    fi
+
+    if [ -n "${persistentkeepalive}" ]; then
+        if ! checknumber "${persistentkeepalive}"; then
+            err "${persistentkeepalive}: PersistentKeepalive must be a number."
+            exit ${EX_DATAERR}
+        fi
+
+        set -- "$@" -V WG_PERSISTENTKEEPALIVE="${persistentkeepalive}"
+    fi
+
+    if [ -n "${network}" ]; then
+        set -- "$@" -V "\"WG_NETWORK=${network}\""
+    fi
+    
+    if [ -n "${virtual_network}" ]; then
+        set -- "$@" -- --wg_virtualnet "\"${virtual_network}\""
+    fi
+
+    if ! checknodename "${node}"; then
+        err "${node}: invalid node name."
+        exit ${EX_DATAERR}
+    fi
+
+    local errlevel
+
+    local output
+    output=`testnode "${node}" 2>&1`
+        
+    errlevel=$?
+
+    if [ ${errlevel} -ne 0 ]; then
+        err "Could not deploy VPN server on node '${node}': ${output}"
+        exit ${EX_NOPERM}
+    fi
+
+    info "Deploying VPN server on node '${node}'"
+
+    remote_exc "${node}" "YES" "NO" \
+        appjail makejail \
+            -j "\"${jail_name}\"" \
+            -f "\"gh+DtxdF/LittleJet-wg-makejail --file server.makejail\"" \
+            -V WG_ENDPOINT="${endpoint}:${port}" \
+            "$@"
+    
+    remote_exc "${node}" "YES" "NO" \
+        appjail start -- "\"${jail_name}\""
+
+    exit ${EX_OK}
+}
+
+usage()
+{
+	err "usage: ${DEPLOY_NAME} [-E] [-j <jail-name>] [-p <port>] [-n <network>] [-m <mtu>]"
+    err "               [-P <seconds>] [-v <virtual-network>] -e <endpoint> <node>"
+	exit ${EX_USAGE}
+}
+
+main "$@"
