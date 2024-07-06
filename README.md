@@ -137,6 +137,7 @@ LittleJet is very, very simple: it depends on the lower layers to do its job, i.
 
 * [wiki](https://github.com/DtxdF/LittleJet/wiki)
 * `man 1 littlejet`
+* `man 5 littlejet.conf`
 
 ## Recommendations
 
