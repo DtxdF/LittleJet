@@ -568,6 +568,16 @@ Create a VPN server on
 See also
 .Lk https://github.com/DtxdF/LittleJet-wg-makejail "VPN server, VPN client and Load balancer"
 .Pp
+It is necessary to load
+.Xr if_wg 4
+on each node
+.Pq including the VPN server
+before using this and other
+.Sy vpn.wg.*
+RunScripts. Add it to your
+.Xr loader.conf 5
+file to load it at boot.
+.Pp
 .Bl -tag -width xx
 .It Fl E
 By default, the port will be exposed unless this flag is set.
