@@ -8,7 +8,7 @@ MANDIR?=${PREFIX}/share/man
 MANPAGES=man1/littlejet.1 \
 		 man5/littlejet.conf.5
 
-LITTLEJET_VERSION=0.0.1
+LITTLEJET_VERSION=0.0.2
 
 all: install
 
