@@ -33,16 +33,13 @@ DEFAULT_CONFIG="%%PREFIX%%/share/littlejet/files/default.conf"
 . "${DEFAULT_CONFIG}"
 
 # User's configuration file.
-CONFIG="${HOMEDIR}/.config/littlejet/config.conf"
+CONFIGDIR="${HOMEDIR}/.config/littlejet"
+CONFIG="${CONFIGDIR}/config.conf"
 
 main()
 {
     local command
     command="$1"
-
-    if [ -f "${CONFIG}" ]; then
-        . "${CONFIG}"
-    fi
 
     local lib_subr
     lib_subr="${LIB_SUBR}"
@@ -53,6 +50,17 @@ main()
     fi
     
     . "${lib_subr}"
+
+    if [ ! -f "${CONFIG}" ]; then
+        debug "Creating user configuration file '${CONFIG}'"
+
+        safe_exc mkdir -p -- "${CONFIGDIR}"
+        safe_exc cp -- "${FILESDIR}/user.conf" "${CONFIGDIR}/config.conf"
+        safe_exc chown ${UID}:${UID} "${CONFIGDIR}/config.conf"
+        safe_exc chmod 640 "${CONFIGDIR}/config.conf"
+    fi
+
+    . "${CONFIG}"
 
     atexit_init
     atexit_add ". \"${DEFAULT_CONFIG}\""
