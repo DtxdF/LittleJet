@@ -1251,6 +1251,8 @@ _littlejet_show()
                 echo "            code: ${service_status_code}"
                 echo "            jail: ${service_jail}"
 
+                _littlejet_show_healthcheckers "${node}" "${service_jail}"
+
                 service_index=$((service_index+1))
             done
         elif [ ${errlevel} -eq ${EX_NOINPUT} ]; then
@@ -1260,6 +1262,54 @@ _littlejet_show()
             echo "        message: ${errmsg}"
         fi
     done
+}
+
+_littlejet_show_healthcheckers()
+{
+    local errlevel
+
+    local healthcheckers
+    healthcheckers=`remote_exc "${node}" "NO" "NO" appjail healthcheck list -eHIpt -- "${service_jail}" nro 2>&1`
+
+    errlevel=$?
+
+    if [ ${errlevel} -ne 0 ]; then
+        echo "            healthcheckers:"
+        echo "              error: ${errlevel}"
+        echo "              message: ${healthcheckers}"
+        exit ${errlevel}
+    fi
+
+    if [ -n "${healthcheckers}" ]; then
+        echo "            healthcheckers:"
+
+        local healthchecker
+
+        for healthchecker in ${healthcheckers}; do
+            echo "              ${healthchecker}:"
+
+            local column
+
+            for column in enabled health_cmd health_type interval kill_after name recover_cmd recover_kill_after recover_timeout recover_timeout_signal recover_total recover_type retries start_period status timeout timeout_signal; do
+                local value
+                value=`remote_exc "${node}" "NO" "NO" appjail healthcheck get -n ${healthchecker} -- "${service_jail}" ${column} 2>&1`
+
+                errlevel=$?
+
+                if [ ${errlevel} -ne 0 ]; then
+                    echo "                ${column}:"
+                    echo "                  status: ${errlevel}"
+                    echo "                  message: ${value}"
+                fi
+
+                if [ -z "${value}" ]; then
+                    continue
+                fi
+
+                echo "                ${column}: ${value}"
+            done
+        done
+    fi
 }
 
 littlejet_version()
