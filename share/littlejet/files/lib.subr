@@ -740,6 +740,32 @@ deploy()
 }
 
 # usage:
+#   sequencial_deploy <project> <nodes>
+# args:
+#   <project>: Project to deploy.
+#   <nodes>: Space-separated list of nodes.
+# description:
+#   Like parallel_deploy() but deploying all nodes in sequencial fashion.
+#
+sequencial_deploy()
+{
+    if [ $# -lt 2 ]; then
+        err "usage: sequencial_deploy <project> <nodes>"
+        exit ${EX_USAGE}
+    fi
+
+    local project
+    project="$1"
+
+    local nodes
+    nodes="$2"
+
+    for node in ${nodes}; do
+        deploy "${project}" "${node}"
+    done
+}
+
+# usage:
 #   parallel_deploy <project> <nodes>
 # args:
 #   <project>: Project to deploy.

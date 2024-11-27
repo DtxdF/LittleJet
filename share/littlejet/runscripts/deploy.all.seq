@@ -44,7 +44,7 @@ main()
         echo "${lib_subr}: library cannot be found." >&2
         exit 66 # EX_NOINPUT
     fi
-    
+
     . "${lib_subr}"
 
     load_config
@@ -71,9 +71,9 @@ main()
         exit ${EX_CANTCREAT}
     fi
 
-    info "Deploying '${project}' in all nodes (parallel) ..."
+    info "Deploying '${project}' in all nodes (sequencial) ..."
 
-    parallel_deploy "${project}" "${nodes}"
+    sequencial_deploy "${project}" "${nodes}"
 
     exit ${EX_OK}
 }
