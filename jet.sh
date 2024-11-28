@@ -1266,6 +1266,12 @@ _littlejet_show()
 
 _littlejet_show_healthcheckers()
 {
+    local node
+    node="$1"
+
+    local service_jail
+    service_jail="$2"
+
     local errlevel
 
     local healthcheckers
