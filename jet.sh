@@ -1255,6 +1255,8 @@ _littlejet_show()
 
                 _littlejet_show_stats "${node}" "${service_jail}" "${service_status}"
 
+                _littlejet_show_limits "${node}" "${service_jail}"
+
                 service_index=$((service_index+1))
             done
         elif [ ${errlevel} -eq ${EX_NOINPUT} ]; then
@@ -1378,6 +1380,72 @@ _littlejet_show_stats()
 
         echo "                ${stat}: ${value}"
     done
+}
+
+_littlejet_show_limits()
+{
+    local node
+    node="$1"
+
+    local service_jail
+    service_jail="$2"
+
+    local errlevel
+
+    local racct_enable
+    racct_enable=`remote_exc "${node}" "NO" "NO" sysctl -n kern.racct.enable 2>&1`
+
+    errlevel=$?
+
+    if [ -z "${racct_enable}" ]; then
+        echo "            limits:"
+        echo "              error: ${errlevel}"
+        echo "              message: ${racct_enable}"
+        exit ${errlevel}
+    fi
+
+    local limits
+    limits=`remote_exc "${node}" "NO" "NO" appjail limits list -eHIpt -- "${service_jail}" nro 2>&1`
+
+    errlevel=$?
+
+    if [ ${errlevel} -ne 0 ]; then
+        echo "            limits:"
+        echo "              error: ${errlevel}"
+        echo "              message: ${limits}"
+        exit ${errlevel}
+    fi
+
+    if [ -n "${limits}" ]; then
+        echo "            limits:"
+
+        local limit
+
+        for limit in ${limits}; do
+            echo "              ${limit}:"
+
+            local column
+
+            for column in enabled name rule; do
+                local value
+                value=`remote_exc "${node}" "NO" "NO" appjail limits get -I -n ${limit} -- "${service_jail}" ${column} 2>&1`
+
+                errlevel=$?
+
+                if [ ${errlevel} -ne 0 ]; then
+                    echo "                ${column}:"
+                    echo "                  status: ${errlevel}"
+                    echo "                  message: ${value}"
+                fi
+
+                if [ -z "${value}" ]; then
+                    continue
+                fi
+
+                echo "                ${column}: ${value}"
+            done
+        done
+    fi
 }
 
 littlejet_version()
