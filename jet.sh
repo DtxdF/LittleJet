@@ -1305,7 +1305,7 @@ _littlejet_show_healthcheckers()
 
             for column in enabled health_cmd health_type interval kill_after name recover_cmd recover_kill_after recover_timeout recover_timeout_signal recover_total recover_type retries start_period status timeout timeout_signal; do
                 local value
-                value=`remote_exc "${node}" "NO" "NO" appjail healthcheck get -n ${healthchecker} -- "${service_jail}" ${column} 2>&1`
+                value=`remote_exc "${node}" "NO" "NO" appjail healthcheck get -I -n ${healthchecker} -- "${service_jail}" ${column} 2>&1`
 
                 errlevel=$?
 
