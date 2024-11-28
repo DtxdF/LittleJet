@@ -1253,6 +1253,8 @@ _littlejet_show()
 
                 _littlejet_show_healthcheckers "${node}" "${service_jail}"
 
+                _littlejet_show_stats "${node}" "${service_jail}" "${service_status}"
+
                 service_index=$((service_index+1))
             done
         elif [ ${errlevel} -eq ${EX_NOINPUT} ]; then
@@ -1271,6 +1273,9 @@ _littlejet_show_healthcheckers()
 
     local service_jail
     service_jail="$2"
+
+    local service_status
+    service_status="$3"
 
     local errlevel
 
@@ -1316,6 +1321,63 @@ _littlejet_show_healthcheckers()
             done
         done
     fi
+}
+
+_littlejet_show_stats()
+{
+    local node
+    node="$1"
+
+    local service_jail
+    service_jail="$2"
+
+    local service_status
+    service_status="$3"
+
+    if [ "${service_status}" != "RUNNING" ]; then
+        return 0
+    fi
+
+    local errlevel
+
+    local racct_enable
+    racct_enable=`remote_exc "${node}" "NO" "NO" sysctl -n kern.racct.enable 2>&1`
+
+    errlevel=$?
+
+    if [ -z "${racct_enable}" ]; then
+        echo "            stats:"
+        echo "              error: ${errlevel}"
+        echo "              message: ${racct_enable}"
+        exit ${errlevel}
+    fi
+
+    if [ "${racct_enable}" != 1 ]; then
+        return 0
+    fi
+
+    echo "            stats:"
+
+    local stat
+
+    for stat in cputime datasize stacksize coredumpsize memoryuse memorylocked maxproc openfiles vmemoryuse pseudoterminals swapuse nthr msgqqueued msgqsize nmsgq nsem nsemop nshm shmsize wallclock pcpu readbps writebps readiops writeiops; do
+        local value
+        value=`remote_exc "${node}" "NO" "NO" appjail limits stats -eHIpt -- "${service_jail}" ${stat} 2>&1`
+
+        errlevel=$?
+
+        if [ ${errlevel} -ne 0 ]; then
+            echo "                ${stat}:"
+            echo "                  status: ${errlevel}"
+            echo "                  message: ${value}"
+        fi
+
+        if [ -z "${value}" ]; then
+            continue
+        fi
+
+        echo "                ${stat}: ${value}"
+    done
 }
 
 littlejet_version()
