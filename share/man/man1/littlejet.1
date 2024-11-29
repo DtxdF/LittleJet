@@ -362,7 +362,9 @@ Copy new environment file by overwriting an existing one in the project director
 .Sh RUNSCRIPTS
 .Bl -tag -width xxx
 .It Cm deploy.all
-Deploy the project to all nodes.
+Deploy the project to all nodes in parallel.
+.It Cm deploy.all.seq
+Deploy the project to all nodes sequentially.
 .It Cm deploy.each
 For each run, deploy to any of the nodes.
 .It Cm deploy.once
