@@ -1404,6 +1404,10 @@ _littlejet_show_limits()
         exit ${errlevel}
     fi
 
+    if [ "${racct_enable}" != 1 ]; then
+        return 0
+    fi
+
     local limits
     limits=`remote_exc "${node}" "NO" "NO" appjail limits list -eHIpt -- "${service_jail}" nro 2>&1`
 
