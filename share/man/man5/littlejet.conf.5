@@ -171,6 +171,26 @@ Default:
 .It NCPU
 Maximum number of jobs running at the same time.
 .El
+.Sh INTERFACE PARAMETERS
+.Bl -tag -width xxxxx
+.It SHOW_HEALTHCHECKERS
+Displays the healthcheckers when the jail has one or more defined.
+.Pp
+Default:
+.Em 0
+.It SHOW_LIMITS
+Displays the limits when the jail has one or more defined.
+.Pp
+Default:
+.Em 0
+.It SHOW_STATS
+Displays the stats of each jail when the system has
+.Xr rctl 8
+enabled.
+.Pp
+Default:
+.Em 0
+.El
 .Sh SEE ALSO
 .Xr cpdup 1
 .Xr littlejet 1

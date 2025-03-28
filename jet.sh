@@ -1251,11 +1251,17 @@ _littlejet_show()
                 echo "            code: ${service_status_code}"
                 echo "            jail: ${service_jail}"
 
-                _littlejet_show_healthcheckers "${node}" "${service_jail}"
+                if [ "${SHOW_HEALTHCHECKERS}" != 0 ]; then
+                    _littlejet_show_healthcheckers "${node}" "${service_jail}"
+                fi
 
-                _littlejet_show_stats "${node}" "${service_jail}" "${service_status}"
+                if [ "${SHOW_STATS}" != 0 ]; then
+                    _littlejet_show_stats "${node}" "${service_jail}" "${service_status}"
+                fi
 
-                _littlejet_show_limits "${node}" "${service_jail}"
+                if [ "${SHOW_LIMITS}" != 0 ]; then
+                    _littlejet_show_limits "${node}" "${service_jail}"
+                fi
 
                 service_index=$((service_index+1))
             done
